@@ -35,7 +35,14 @@ df["9-12월평균기온"] = df.apply(
     axis=1,
 )
 
-# 연도별 집계
+# ----------------------------------------------------------------------
+# 2. 12개월이 모두 없는 연도 제외 (1907년, 1953년 등 불완전 연도 제외)
+# ----------------------------------------------------------------------
+months_per_year = df.groupby("연도")["날짜"].nunique()
+complete_years = months_per_year[months_per_year.isin([365, 366])].index.tolist()
+
+df = df[df["연도"].isin(complete_years)].copy()
+
 annual = (
     df.groupby("연도")
     .agg(
@@ -46,21 +53,24 @@ annual = (
     )
     .reset_index()
 )
+
+# 5년 이동평균 (불완전 연도가 제외된 완전한 연도 기준으로 계산)
 annual["5년이동평균"] = annual["평균기온"].rolling(window=5, min_periods=1).mean()
 
 # ----------------------------------------------------------------------
-# 2. 사이드바: 연도 범위 슬라이더 + 기본 설정 리셋
+# 3. 사이드바: 연도 범위 슬라이더 + 기본 설정 리셋
 # ----------------------------------------------------------------------
 year_min, year_max = int(annual["연도"].min()), int(annual["연도"].max())
 
+# 리셋 상태 저장용 세션 상태는 '최초 1회만' 초기화
 if "year_slider" not in st.session_state:
     st.session_state["year_slider"] = (year_min, year_max)
 
+# 슬라이더는 세션 상태값을 사용 (value를 직접 넘기지 않아 리셋이 바로 반영됨)
 sel_range = st.sidebar.slider(
     "연도 범위",
     min_value=year_min,
     max_value=year_max,
-    value=(year_min, year_max),
     key="year_slider",
 )
 
@@ -72,7 +82,7 @@ sel_mask = (annual["연도"] >= sel_range[0]) & (annual["연도"] <= sel_range[1
 sel_annual = annual[sel_mask]
 
 # ----------------------------------------------------------------------
-# 3. 메인 화면
+# 4. 메인 화면
 # ----------------------------------------------------------------------
 st.title("서울 연평균 기온 분석 🌡️")
 st.write(f"데이터 기간: {year_min}년 ~ {year_max}년 (전체 {len(annual)}개 연도, 관측일 {len(df):,}일)")
@@ -96,9 +106,9 @@ else:
     )
 
 # ----------------------------------------------------------------------
-# 4. 차트 (선택 구간 기준으로 표시)
+# 5. 차트 (선택 구간 기준으로 표시, 선은 끊기지 않고 연결)
 # ----------------------------------------------------------------------
-# 4-1. 선택 구간 연평균기온 + 5년 이동평균
+# 5-1. 선택 구간 연평균기온 + 5년 이동평균
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
@@ -129,7 +139,7 @@ fig.update_layout(
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# 4-2. 선택 구간 9–12월 평균기온 (파생 속성 기반)
+# 5-2. 선택 구간 9–12월 평균기온 (파생 속성 기반)
 fig2 = go.Figure()
 fig2.add_trace(
     go.Scatter(
