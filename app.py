@@ -36,9 +36,9 @@ df["9-12월평균기온"] = df.apply(
 )
 
 # ------------------------------------------------------------------
-# 2. 제외 대상 지정: 1907·1953년 및 12개월 미만 연도
+# 2. 제외 대상 지정: 1907, 1953 및 12개월 미만 연도
 # ------------------------------------------------------------------
-explicit_exclude = {1907, 1953}  # 사용자가 지정한 명시 제외 연도
+explicit_exclude = {1907, 1953}
 months_per_year = df.groupby("연도")["날짜"].nunique()
 incomplete = set(months_per_year[months_per_year < 12].index)
 excluded_years = sorted(incomplete | explicit_exclude)
@@ -67,10 +67,18 @@ annual["5년이동평균"] = annual["평균기온"].rolling(window=5, min_period
 # ------------------------------------------------------------------
 year_min, year_max = int(annual["연도"].min()), int(annual["연도"].max())
 
+# 세션 상태 초기화
 if "year_slider" not in st.session_state:
     st.session_state["year_slider"] = (year_min, year_max)
+if "reset_requested" not in st.session_state:
+    st.session_state["reset_requested"] = False
 
-# 슬라이더는 세션 상태값만 사용 (value를 직접 넘기지 않아 리셋이 안정됨)
+# 리셋 요청 적용 — 슬라이더 위젯 생성 **이전**에 실행되므로 에러 없음
+if st.session_state["reset_requested"]:
+    st.session_state["year_slider"] = (year_min, year_max)
+    st.session_state["reset_requested"] = False
+
+# 연도 범위 슬라이더 (key="year_slider"는 여기서 처음 만들어짐)
 sel_range = st.sidebar.slider(
     "연도 범위",
     min_value=year_min,
@@ -78,11 +86,9 @@ sel_range = st.sidebar.slider(
     key="year_slider",
 )
 
+# 리셋 버튼: '다음 런에 적용' 요청만 남김
 if st.sidebar.button("기본 설정으로 리셋", use_container_width=True):
-    st.session_state["year_slider"] = (year_min, year_max)
-    # st.rerun()이 없는 구버전 환경에서는 건너뛰도록 가드
-    if hasattr(st, "rerun"):
-        st.rerun()
+    st.session_state["reset_requested"] = True
 
 # 선택 구간 필터
 sel_mask = (annual["연도"] >= sel_range[0]) & (annual["연도"] <= sel_range[1])
@@ -115,13 +121,14 @@ else:
 # ------------------------------------------------------------------
 # 5. 차트
 # ------------------------------------------------------------------
-# 5-1. 선택 구간 연평균기온 + 5년 이동평균
+# 5-1. 선택 구간 연평균기온 + 5년 이동평균 (선은 끊기지 않게 연결)
 fig = go.Figure()
 fig.add_trace(
     go.Scatter(
         x=sel_annual["연도"],
         y=sel_annual["평균기온"],
-        mode="markers+lines",
+        mode="lines",
+        connectgaps=True,
         name="연평균기온",
         marker=dict(color="#1f77b4"),
         line=dict(color="#1f77b4", width=2),
@@ -132,6 +139,7 @@ fig.add_trace(
         x=sel_annual["연도"],
         y=sel_annual["5년이동평균"],
         mode="lines",
+        connectgaps=True,
         name="5년 이동평균",
         line=dict(color="#d62728", dash="dash", width=2),
     )
@@ -146,13 +154,14 @@ fig.update_layout(
 )
 st.plotly_chart(fig, use_container_width=True)
 
-# 5-2. 선택 구간 9–12월 평균기온 (파생 속성 기반, 끊기지 않는 선)
+# 5-2. 선택 구간 9–12월 평균기온 (파생 속성 기반)
 fig2 = go.Figure()
 fig2.add_trace(
     go.Scatter(
         x=sel_annual["연도"],
         y=sel_annual["가을평균기온"],
-        mode="markers+lines",
+        mode="lines",
+        connectgaps=True,
         name="9–12월 평균기온",
         line=dict(color="#2ca02c", width=2),
     )
